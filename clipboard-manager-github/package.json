@@ -1,7 +1,7 @@
 {
   "name": "clipboard-web",
   "version": "1.0.0",
-  "description": "",
+  "description": "Mobile-first clipboard history, saved phrases, and quick Google search PWA.",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

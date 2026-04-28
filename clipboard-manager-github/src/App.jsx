@@ -1,36 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-
-// ── Storage ──
-const load = (key, fallback) => { try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; } };
-const save = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
-const hasKey = (key) => { try { return localStorage.getItem(key) !== null; } catch { return false; } };
-
-// ── Long Press ──
-function useLongPress(cb, delay = 500) {
-  const timer = useRef(null); const moved = useRef(false); const active = useRef(false);
-  const start = useCallback(e => { moved.current = false; active.current = true; timer.current = setTimeout(() => { if (!moved.current && active.current) cb(e); }, delay); }, [cb, delay]);
-  const move = useCallback(() => { moved.current = true; }, []);
-  const end = useCallback(() => { active.current = false; clearTimeout(timer.current); }, []);
-  return { onTouchStart: start, onTouchMove: move, onTouchEnd: end, onTouchCancel: end, onMouseDown: start, onMouseMove: move, onMouseUp: end, onMouseLeave: end };
-}
-function Pressable({ children, style, onTap, onLongPress: olp }) {
-  const [p, setP] = useState(false); const t = useRef(false);
-  const lp = useLongPress(() => { t.current = true; setP(false); olp?.(); });
-  return <div {...lp} onClick={() => { if (t.current) { t.current = false; return; } onTap?.(); }} onContextMenu={e => e.preventDefault()} style={{ ...style, transform: p ? "scale(.97)" : "scale(1)", transition: "transform .12s,background .15s", WebkitUserSelect: "none", userSelect: "none" }} onPointerDown={() => setP(true)} onPointerUp={() => setP(false)} onPointerLeave={() => setP(false)}>{children}</div>;
-}
-
-// ── Data (defaults for first-time users only) ──
-const INIT_CLIPS = [];
-const INIT_GROUPS = [
-  { id: "g1", name: "계정 정보", icon: "🔑" }, { id: "g2", name: "주소", icon: "📍" },
-  { id: "g3", name: "비즈니스", icon: "💼" }, { id: "g4", name: "금융", icon: "🏦" },
-];
-const INIT_PHRASES = [];
-const GICONS = ["📁","🔑","📍","💼","🏦","🎯","🛒","📚","🎨","🔧","💡","🏠","📞","✈️","🎮","🍔","💊","🐾"];
-
-const catIcon = t => { if (/^https?:\/\//.test(t)) return "🔗"; if (t.includes("@") && t.includes(".") && !t.includes(" ")) return "✉️"; const d = t.replace(/[^0-9+\-]/g, ""); if (d.length >= 9 && d.length <= 15 && /^[\d\-+\s()]+$/.test(t.trim())) return "📞"; return "📝"; };
-const ago = ts => { const d = Date.now() - ts; if (d < 60000) return "방금 전"; if (d < 3600000) return `${Math.floor(d / 60000)}분 전`; if (d < 86400000) return `${Math.floor(d / 3600000)}시간 전`; return `${Math.floor(d / 86400000)}일 전`; };
-const MAX_CLIPS = 500;
+import { useState, useRef, useEffect } from "react";
+import { Pressable } from "./components/Pressable";
+import { Nil, SBar, Tog } from "./components/ui";
+import { DEFAULT_SETTINGS, GICONS, INIT_CLIPS, INIT_GROUPS, INIT_PHRASES, MAX_CLIPS, MAX_SEARCH_HISTORY } from "./constants";
+import { ago, catIcon, normalizeUrl } from "./lib/format";
+import { load, save } from "./lib/storage";
 
 export default function App() {
   const [tab, setTab] = useState("clips");
@@ -50,6 +23,7 @@ export default function App() {
   const [showGrpMgr, setShowGrpMgr] = useState(false);
   const [newGN, setNewGN] = useState(""); const [newGI, setNewGI] = useState("📁"); const [iconPick, setIconPick] = useState(false);
   const [delConf, setDelConf] = useState(null); const [reassign, setReassign] = useState(null);
+  const [settings, setSettings] = useState(() => ({ ...DEFAULT_SETTINGS, ...load("cb_settings", DEFAULT_SETTINGS) }));
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,12 +36,24 @@ export default function App() {
   useEffect(() => { if (!mounted.current) return; save("cb_phrases", phrases); }, [phrases]);
   useEffect(() => { if (!mounted.current) return; save("cb_groups", groups); }, [groups]);
   useEffect(() => { if (!mounted.current) return; save("cb_history", searchHistory); }, [searchHistory]);
+  useEffect(() => { if (!mounted.current) return; save("cb_settings", settings); }, [settings]);
 
-  const [kbIn, setKbIn] = useState(""); const [kbTab, setKbTab] = useState("clips");
   const addRef = useRef(null); const grpRef = useRef(null);
 
   const fire = m => { setToast(m); setTimeout(() => setToast(null), 1500); };
-  const doCopy = async item => { try { await navigator.clipboard.writeText(item.text); } catch {} setCopied(item.id); fire("클립보드에 복사됨"); setTimeout(() => setCopied(null), 1400); };
+  const vibrate = () => { if (settings.haptics) navigator.vibrate?.(12); };
+  const updateSetting = (key, value) => setSettings(p => ({ ...p, [key]: value }));
+  const doCopy = async item => {
+    try {
+      await navigator.clipboard.writeText(item.text);
+      setCopied(item.id);
+      vibrate();
+      fire("클립보드에 복사됨");
+      setTimeout(() => setCopied(null), 1400);
+    } catch {
+      fire("복사 권한이 필요합니다");
+    }
+  };
 
   // 클립보드 불러오기
   const [showPasteBox, setShowPasteBox] = useState(false);
@@ -75,13 +61,15 @@ export default function App() {
   const addClip = (text) => {
     setClips(p => [{ id: Date.now(), text, ts: Date.now(), app: "클립보드" }, ...p].slice(0, MAX_CLIPS));
   };
+  const isDuplicateClip = (text) => settings.preventDuplicates && clips.some(c => c.text === text);
   const fetchClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text && text.trim()) {
         const trimmed = text.trim();
-        if (clips.some(c => c.text === trimmed)) { fire("이미 저장된 내용입니다"); return; }
+        if (isDuplicateClip(trimmed)) { fire("이미 저장된 내용입니다"); return; }
         addClip(trimmed);
+        vibrate();
         fire("클립보드 저장 완료!"); return;
       }
     } catch {}
@@ -92,8 +80,9 @@ export default function App() {
     const text = (e.clipboardData?.getData("text") || "").trim();
     if (!text) return;
     e.preventDefault();
-    if (clips.some(c => c.text === text)) { fire("이미 저장된 내용입니다"); setShowPasteBox(false); return; }
+    if (isDuplicateClip(text)) { fire("이미 저장된 내용입니다"); setShowPasteBox(false); return; }
     addClip(text);
+    vibrate();
     fire("클립보드 저장 완료!");
     setShowPasteBox(false);
   };
@@ -112,10 +101,11 @@ export default function App() {
   const doSearch = (q) => {
     const query = (q || searchQuery).trim();
     if (!query) return;
-    window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank");
+    const searchWindow = window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
+    if (searchWindow) searchWindow.opener = null;
     setSearchHistory(p => {
       const filtered = p.filter(h => h.text !== query);
-      return [{ id: Date.now(), text: query, ts: Date.now() }, ...filtered].slice(0, 30);
+      return [{ id: Date.now(), text: query, ts: Date.now() }, ...filtered].slice(0, MAX_SEARCH_HISTORY);
     });
     setSearchQuery("");
   };
@@ -205,7 +195,7 @@ export default function App() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <p style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", marginBottom: 2 }}>{item.label}</p>
                     <p style={{ fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.text}</p>
-                    {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#818cf8", textDecoration: "none", display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>🔗 {item.url.length > 30 ? item.url.slice(0, 30) + "…" : item.url}</a>}
+                    {(() => { const safeUrl = normalizeUrl(item.url || ""); return safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#818cf8", textDecoration: "none", display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>🔗 {safeUrl.length > 30 ? safeUrl.slice(0, 30) + "…" : safeUrl}</a> : null; })()}
                   </div>
                 </Pressable>
                 {copied === item.id ? <span style={{ fontSize: 12, color: "#22c55e", flexShrink: 0, padding: "8px 4px" }}>✅</span> : (
@@ -312,7 +302,7 @@ export default function App() {
       {tab === "settings" && <div style={S.pg}>
         <div style={S.nav}><div/><h1 style={S.tt}>설정</h1><div/></div>
         <div style={{ padding: "4px 16px" }}>
-          {[{ t: "일반", r: [{ i: "🔄", l: "자동 클립보드 감지", right: <Tog on /> }, { i: "📳", l: "햅틱 피드백", right: <Tog on /> }] }, { t: "통계", r: [{ i: "📋", l: "클립보드", right: <span style={{ color: "#64748b", fontSize: 13 }}>{clips.length}개</span> }, { i: "⭐", l: "문구", right: <span style={{ color: "#64748b", fontSize: 13 }}>{phrases.length}개</span> }, { i: "🔍", l: "검색 기록", right: <span style={{ color: "#64748b", fontSize: 13 }}>{searchHistory.length}개</span> }] }].map((sec, si) => (
+          {[{ t: "일반", r: [{ i: "🔁", l: "중복 클립 저장 방지", right: <Tog on={settings.preventDuplicates} onChange={v => updateSetting("preventDuplicates", v)} /> }, { i: "📳", l: "햅틱 피드백", right: <Tog on={settings.haptics} onChange={v => updateSetting("haptics", v)} /> }] }, { t: "통계", r: [{ i: "📋", l: "클립보드", right: <span style={{ color: "#64748b", fontSize: 13 }}>{clips.length}개</span> }, { i: "⭐", l: "문구", right: <span style={{ color: "#64748b", fontSize: 13 }}>{phrases.length}개</span> }, { i: "🔍", l: "검색 기록", right: <span style={{ color: "#64748b", fontSize: 13 }}>{searchHistory.length}개</span> }] }].map((sec, si) => (
             <div key={si} style={{ marginBottom: 18 }}><p style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginBottom: 5, paddingLeft: 4, letterSpacing: .5 }}>{sec.t}</p><div style={S.setG}>{sec.r.map((r, ri) => <div key={ri} style={{ ...S.setR, ...(ri < sec.r.length - 1 ? { borderBottom: "1px solid rgba(255,255,255,.04)" } : {}) }}><div style={{ flex: 1, display: "flex", gap: 8, alignItems: "center" }}><span style={{ fontSize: 16 }}>{r.i}</span><span style={{ fontSize: 15, color: "#e2e8f0" }}>{r.l}</span></div>{r.right}</div>)}</div></div>
           ))}
         </div>
@@ -361,9 +351,10 @@ export default function App() {
             <span style={{ fontWeight: 700, fontSize: 16, color: "#f1f5f9" }}>문구 추가</span>
             <button onClick={() => {
               if (!addText.trim()) return;
-              const url = addUrl.trim();
-              const validUrl = url && !url.startsWith("http") ? "https://" + url : url;
+              const validUrl = normalizeUrl(addUrl);
+              if (addUrl.trim() && !validUrl) { fire("http 또는 https URL만 저장할 수 있습니다"); return; }
               setPhrases(p => [...p, { id: Date.now(), text: addText.trim(), label: addLabel.trim() || addText.trim().slice(0, 15), gid: addGid || groups[0]?.id || "__none__", icon: "📝", url: validUrl || "" }]);
+              vibrate();
               setShowAdd(false); fire("추가됨");
             }} style={{ ...S.sBtnTxt, fontWeight: 700, opacity: addText.trim() ? 1 : .35 }}>저장</button>
           </div>
@@ -390,9 +381,11 @@ export default function App() {
           <button onClick={() => setEdit(null)} style={S.sBtnTxt}>취소</button>
           <span style={{ fontWeight: 700, fontSize: 16, color: "#f1f5f9" }}>수정</span>
           <button onClick={() => {
-            const url = editUrl.trim();
-            const validUrl = url && !url.startsWith("http") ? "https://" + url : url;
+            if (!editText.trim()) { fire("텍스트를 입력하세요"); return; }
+            const validUrl = normalizeUrl(editUrl);
+            if (editUrl.trim() && !validUrl) { fire("http 또는 https URL만 저장할 수 있습니다"); return; }
             setPhrases(p => p.map(i => i.id === edit.id ? { ...i, text: editText.trim(), label: editLabel.trim(), gid: editGid, url: validUrl || "" } : i));
+            vibrate();
             setEdit(null); fire("수정 완료");
           }} style={{ ...S.sBtnTxt, fontWeight: 700 }}>저장</button>
         </div>
@@ -411,10 +404,6 @@ export default function App() {
     </div>
   );
 }
-
-function SBar({ v, set, ph }) { return <div style={{ padding: "0 16px 8px" }}><div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", borderRadius: 12, padding: "9px 14px" }}><span style={{ fontSize: 13, opacity: .4 }}>🔍</span><input value={v} onChange={e => set(e.target.value)} placeholder={ph} style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#e2e8f0", fontSize: 14, fontFamily: "inherit" }}/>{v && <button onClick={() => set("")} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer" }}>✕</button>}</div></div>; }
-function Nil({ icon, t, s }) { return <div style={{ textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, opacity: .25, marginBottom: 10 }}>{icon}</div><p style={{ color: "#64748b", fontWeight: 600 }}>{t}</p><p style={{ color: "#475569", fontSize: 12, marginTop: 4 }}>{s}</p></div>; }
-function Tog({ on: d = false }) { const [o, sO] = useState(d); return <div onClick={() => sO(!o)} style={{ width: 46, height: 27, borderRadius: 14, cursor: "pointer", background: o ? "#34d399" : "rgba(255,255,255,.1)", transition: "background .2s", position: "relative", flexShrink: 0 }}><div style={{ width: 23, height: 23, borderRadius: 12, background: "#fff", position: "absolute", top: 2, left: o ? 21 : 2, transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}/></div>; }
 
 const S = {
   phone: { width: "100%", height: "100dvh", margin: 0, background: "#0f172a", borderRadius: 0, border: "none", fontFamily: "'Noto Sans KR',-apple-system,sans-serif", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", },

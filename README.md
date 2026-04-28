@@ -1,89 +1,109 @@
-# 📋 클립보드 매니저
+# 클립보드 매니저
 
-클립보드 히스토리 관리 + 자주쓰는 문구 저장 + 구글 검색을 하나로 합친 모바일 웹앱
+클립보드 히스토리 관리, 자주 쓰는 문구 저장, Google 검색을 하나로 합친 모바일 우선 PWA입니다.
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/your-badge-id/deploy-status)](https://app.netlify.com)
+## 주요 기능
 
-## 📱 주요 기능
+### 클립보드
+- 현재 복사된 텍스트를 한 번에 저장
+- 최대 500개 자동 보관
+- 중복 클립 저장 방지 설정
+- URL, 이메일, 전화번호 자동 분류
+- 길게 누르면 복사, 문구 저장, Google 검색, 삭제 메뉴 표시
+- 브라우저 클립보드 읽기가 막히는 환경을 위한 직접 붙여넣기 폴백
 
-### 📋 클립보드
-- **클립보드 불러오기** — 현재 복사된 텍스트를 한 탭에 저장
-- 최대 **500개** 자동 보관 (초과 시 오래된 것부터 삭제)
-- URL / 이메일 / 전화번호 자동 분류
-- 길게 누르면 → 복사, 문구 저장, 구글 검색, 삭제
-- 긴 텍스트 카드 내 **스크롤** 지원
+### 자주 쓰는 문구
+- 그룹별 문구 추가, 수정, 삭제
+- 그룹 이름과 아이콘 커스텀
+- 문구별 http/https 링크 저장
+- 클립보드 항목을 문구로 바로 저장
 
-### ⭐ 자주쓰는 문구
-- 그룹별 문구 관리 (추가 / 수정 / 삭제)
-- 그룹 커스텀 (이름 + 아이콘 18종)
-- **URL 링크** 연결 — 문구에 URL 첨부하면 바로 열기
-- 탭 → 복사 / 오른쪽 › → 수정 바로가기
-- 클립보드에서 길게 눌러 **문구로 바로 저장** (그룹 선택)
+### 검색
+- Google 검색
+- 클립보드/문구 항목으로 빠른 검색
+- 최근 검색어 30개 저장
 
-### 🔍 검색
-- **구글 검색** — 입력 후 새 탭에서 검색
-- 클립보드 / 문구로 **빠른 검색**
-- 검색 히스토리 30개 저장
+### 저장과 개인정보
+- 모든 데이터는 브라우저 `localStorage`에 저장됩니다.
+- 서버로 데이터를 전송하지 않습니다.
+- 클립보드 접근은 브라우저 권한 정책에 따라 동작합니다.
 
-### 💾 데이터 영구 저장
-- 모든 데이터 **localStorage** 저장
-- 새로고침 / 앱 종료 후에도 유지
-- 서버 전송 없음, 100% 로컬
+## 기술 스택
 
-## 🛠 기술 스택
+- React
+- Vite
+- PWA manifest + service worker
+- Netlify 배포 설정
 
-- **React** + **Vite**
-- **PWA** 지원 (홈 화면 추가 가능)
-- **Netlify** 배포 (GitHub 연동 자동 배포)
-
-## 🚀 로컬 실행
+## 로컬 실행
 
 ```bash
-git clone https://github.com/your-username/clipboard-manager.git
-cd clipboard-manager
+git clone https://github.com/wwhunter14-wwhunter/clipboard-manager.git
+cd clipboard-manager/clipboard-manager-github
 npm install
 npm run dev
 ```
 
-## 📦 배포
+## 빌드
 
 ```bash
+cd clipboard-manager-github
 npm run build
-# dist/ 폴더가 생성됨 → Netlify에 자동 배포
 ```
 
-GitHub에 push하면 Netlify에서 자동 빌드 & 배포됩니다.
+빌드 결과는 `clipboard-manager-github/dist`에 생성됩니다.
 
-## 📁 프로젝트 구조
+## Netlify 배포
 
+저장소 루트의 `netlify.toml`에 배포 설정이 포함되어 있습니다.
+
+```toml
+[build]
+  base = "clipboard-manager-github"
+  command = "npm run build"
+  publish = "dist"
 ```
+
+GitHub 저장소를 Netlify에 연결하면 위 설정으로 빌드됩니다.
+
+## 프로젝트 구조
+
+```text
 clipboard-manager/
-├── public/
-│   ├── manifest.json    # PWA 설정
-│   ├── icon-192.png     # 앱 아이콘
-│   ├── icon-512.png
-│   ├── _headers         # Netlify 캐시 설정
-│   └── _redirects       # SPA 라우팅
-├── src/
-│   ├── main.jsx         # 엔트리 포인트
-│   └── App.jsx          # 메인 앱 (전체 로직)
-├── index.html
-├── vite.config.js
-└── package.json
+├── netlify.toml
+├── LICENSE
+├── README.md
+└── clipboard-manager-github/
+    ├── public/
+    │   ├── manifest.json
+    │   ├── sw.js
+    │   ├── icon-192.png
+    │   ├── icon-512.png
+    │   ├── _headers
+    │   └── _redirects
+    ├── src/
+    │   ├── components/
+    │   ├── hooks/
+    │   ├── lib/
+    │   ├── App.jsx
+    │   ├── constants.js
+    │   └── main.jsx
+    ├── index.html
+    ├── vite.config.js
+    └── package.json
 ```
 
-## 📱 모바일 설치 (PWA)
+## 모바일 설치
 
-**iPhone Safari**
+### iPhone Safari
 1. 사이트 접속
-2. 하단 공유 버튼 (↑) 탭
+2. 공유 버튼 선택
 3. "홈 화면에 추가" 선택
-4. 네이티브 앱처럼 사용 가능
 
-**Android Chrome**
+### Android Chrome
 1. 사이트 접속
-2. 메뉴 (⋮) → "홈 화면에 추가"
+2. 메뉴에서 "홈 화면에 추가" 선택
 
-## 📄 라이선스
+## 라이선스
 
-MIT License
+MIT

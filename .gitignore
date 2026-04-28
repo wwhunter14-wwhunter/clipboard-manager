@@ -1,0 +1,8 @@
+node_modules/
+dist/
+clipboard-manager-github/node_modules/
+clipboard-manager-github/dist/
+.DS_Store
+
+# Local Netlify folder
+.netlify
